@@ -383,6 +383,7 @@ $('#all').onclick=()=>{const l=D.lists[D.active];if(!l||!l.items.length)return m
 
 /* ---------- Reproductor de YouTube ---------- */
 let player=null,ready=false,pending=null,state=-2,wantPlay=false,fails=0,tries=0,restoring=false;
+let loadAt=0,lastT=0,visAt=Date.now(),rescue=null;
 const ST={'-1':'sin iniciar',0:'terminado',1:'reproduciendo',2:'en pausa',3:'cargando',5:'preparado'};
 window.onYouTubeIframeAPIReady=()=>{
   const o={playsinline:1,rel:0,modestbranding:1,enablejsapi:1};
@@ -400,25 +401,37 @@ function onReady(){
 function loadVid(id,t,auto){
   if(!ready){pending={id,t,auto};return}
   const o={videoId:id,startSeconds:t||0};
+  loadAt=Date.now();lastT=t||0;
   if(auto)player.loadVideoById(o);else player.cueVideoById(o);
 }
 function onState(e){
   state=e.data;log('YouTube: '+(ST[state]||state)+(document.hidden?' [pantalla oculta]':''));
-  const playing=state===1||state===3;
   $('#play').textContent=state===1?'Pausa':'Reproducir';
-  if(state===1){fails=0;tries=0;restoring=false;applyVol();setMS('playing');kaStart()}
+  if(state===1){
+    // si suena, es que se quiere que suene (también cuando se pulsa play dentro del propio vídeo)
+    fails=0;tries=0;restoring=false;wantPlay=true;stopRescue('reproduciendo');applyVol();setMS('playing');kaStart();
+  }
   else if(state===2){
-    setMS('paused');
-    if(wantPlay&&document.hidden&&S.rs)retryPlay();
-    else if(!document.hidden&&wantPlay&&!restoring){wantPlay=false;kaStop()}
+    if(Date.now()-loadAt<2500){/* pausa que YouTube emite al cambiar de vídeo: no es del usuario */}
+    else if(wantPlay&&document.hidden&&S.rs){setMS('playing');startRescue()} // en la pantalla de bloqueo se sigue mostrando «reproduciendo»
+    else if(!document.hidden&&wantPlay&&!restoring&&Date.now()-visAt>3000){wantPlay=false;kaStop();setMS('paused')} // pausa hecha por el usuario con la pantalla encendida
+    else setMS('paused');
   }
   else if(state===0)onEnded();
 }
-function retryPlay(){
-  if(tries>=6){log('Reanudación: demasiados intentos, me detengo');return}
-  tries++;log('Reanudación automática, intento '+tries);
-  setTimeout(()=>{if(wantPlay&&state!==1&&ready)player.playVideo()},800);
+// Con la pantalla apagada YouTube se pausa solo. Se insiste cada 2 s: dos veces play y, a la tercera, se recarga el vídeo en el segundo donde iba.
+function startRescue(){
+  if(rescue||!ready)return;
+  let n=0;log('Rescate: inicio');
+  rescue=setInterval(()=>{
+    if(!wantPlay||state===1||!ready){stopRescue('');return}
+    if(++n>15){stopRescue('agotado tras 15 intentos');return}
+    const it=curItem();
+    if(n%3===0&&it){log('Rescate '+n+': recarga en '+Math.floor(lastT)+' s');loadAt=Date.now();player.loadVideoById({videoId:it.id,startSeconds:lastT})}
+    else{log('Rescate '+n+': playVideo');player.playVideo()}
+  },2000);
 }
+function stopRescue(why){if(rescue){clearInterval(rescue);rescue=null;if(why)log('Rescate: '+why)}}
 function onErr(e){
   const c=e.data,why={2:'Enlace de vídeo no válido.',5:'Error del reproductor.',100:'Vídeo no disponible o privado.',101:'El autor no permite reproducirlo aquí.',150:'El autor no permite reproducirlo aquí.'}[c]||'Error de reproducción ('+c+').';
   log('Error '+c);fail(why);
@@ -450,15 +463,20 @@ function prev(){
   if(ready&&state===1&&player.getCurrentTime()>3){player.seekTo(0,true);return}
   play(D.cur<=0?l.items.length-1:D.cur-1);
 }
-function userPause(){wantPlay=false;if(ready)player.pauseVideo();kaStop();nzPauseAll()}
-function userResume(){wantPlay=true;tries=0;kaStart();if(ready)player.playVideo();if(nzOn)NZE[nzAct].play().catch(()=>{})}
+function userPause(){wantPlay=false;stopRescue('');if(ready)player.pauseVideo();kaStop();nzPauseAll();setMS('paused')}
+function userResume(){
+  wantPlay=true;tries=0;kaStart();
+  if(ready){player.playVideo();if(document.hidden)startRescue()}
+  if(nzOn)NZE[nzAct].play().catch(()=>{});
+  setMS('playing');
+}
 $('#play').onclick=()=>{
   if(!curList())return $('#all').click();
   if(D.cur<0)return play(0);
   if(state===1||state===3)userPause();else userResume();
 };
 $('#next').onclick=next;$('#prev').onclick=prev;
-function stopPlayback(){wantPlay=false;kaStop();if(ready)player.stopVideo();D.pl=null;D.cur=-1;save();renderMain()}
+function stopPlayback(){wantPlay=false;stopRescue('');kaStop();if(ready)player.stopVideo();D.pl=null;D.cur=-1;save();renderMain()}
 function applyVol(){if(ready&&sleepVol===null){try{player.setVolume(S.ch)}catch(e){}}}
 
 /* Posición de reproducción */
@@ -479,7 +497,17 @@ function restorePos(){
   }catch(e){}
 }
 setInterval(()=>{if(ready&&state===1)savePos()},5000);
-addEventListener('pagehide',()=>savePos());
+addEventListener('pagehide',()=>{savePos();log('pagehide')});
+addEventListener('pageshow',e=>log('pageshow'+(e.persisted?' (desde caché)':'')));
+document.addEventListener('freeze',()=>log('Página congelada por el sistema (freeze)'));
+document.addEventListener('resume',()=>log('Página reanudada (resume)'));
+// Latido: cada 2 s se anota el segundo del vídeo; cada 10 s se escribe una línea en el registro mientras algo debería sonar
+let hb=0;
+setInterval(()=>{
+  if(ready&&state===1){try{lastT=player.getCurrentTime()}catch(e){}}
+  if(++hb%5)return;
+  if(wantPlay||nzOn)log('Latido: yt='+(ST[state]||state)+' '+Math.floor(lastT)+'s · silencioso='+(KA.paused?'parado':'suena')+' · ruido='+(nzOn&&!NZE[nzAct].paused?'suena':'no')+(document.hidden?' · pantalla oculta':''));
+},2000);
 
 /* Pantalla de bloqueo */
 function setMS(pb){
@@ -493,7 +521,10 @@ function setMS(pb){
 }
 if('mediaSession' in navigator){
   const h=(a,f)=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}};
-  h('play',userResume);h('pause',userPause);h('nexttrack',next);h('previoustrack',prev);
+  h('play',()=>{log('Pantalla de bloqueo: play');userResume()});
+  h('pause',()=>{log('Pantalla de bloqueo: pausa');userPause()});
+  h('nexttrack',()=>{log('Pantalla de bloqueo: siguiente');next()});
+  h('previoustrack',()=>{log('Pantalla de bloqueo: anterior');prev()});
 }
 
 /* ---------- Audio silencioso anti-suspensión ---------- */
@@ -510,8 +541,9 @@ const KA=new Audio();KA.loop=true;KA.setAttribute('playsinline','');let kaUrl=nu
 function kaStart(){
   if(!S.ka||kaOn&&!KA.paused)return;
   if(!kaUrl){
-    // 5 s de ruido de ±2 (sobre 32767): inaudible, pero no es silencio digital puro y el navegador lo trata como audio real
-    const p=new Int16Array(8000*5);for(let i=0;i<p.length;i++)p[i]=Math.random()<.5?-2:2;
+    // Seno de 20 Hz a unos -58 dBFS durante 5 s (100 ciclos exactos, sin corte al repetir). Es infraudible, pero queda por encima del umbral
+    // (≈ -72 dBFS) bajo el que Chrome considera que una pista es silencio: con ±2 sobre 32767 (-84 dBFS) el navegador no la tomaba por audio.
+    const p=new Int16Array(8000*5);for(let i=0;i<p.length;i++)p[i]=Math.round(60*Math.sin(2*Math.PI*20*i/8000));
     kaUrl=URL.createObjectURL(wavBlob(p,8000));KA.src=kaUrl;
   }
   KA.play().then(()=>{if(!kaOn)log('Audio silencioso: activo');kaOn=true}).catch(()=>log('Audio silencioso: bloqueado por el navegador'));
@@ -519,10 +551,11 @@ function kaStart(){
 function kaStop(){if(kaOn)log('Audio silencioso: detenido');kaOn=false;KA.pause()}
 document.addEventListener('visibilitychange',()=>{
   log('Pantalla '+(document.hidden?'oculta / apagada':'visible'));
+  if(!document.hidden)visAt=Date.now();
   if(document.hidden)savePos();
   if(sleepMode==='time')sleepCheck();
-  if(document.hidden&&wantPlay){
-    setTimeout(()=>{if(document.hidden&&wantPlay&&state!==1&&state!==3&&S.rs&&ready)retryPlay()},2500);
+  if(document.hidden&&wantPlay&&S.rs){
+    setTimeout(()=>{if(document.hidden&&wantPlay&&state!==1&&ready)startRescue()},1500);
   }
 });
 
@@ -774,7 +807,8 @@ history.replaceState({s:'main'},'');
 render0();
 function render0(){renderMain();show('main');setHH();fillMissing()}
 addEventListener('resize',setHH);
-log('App iniciada'+(IOS?' (iOS)':''));
+(function(){let nt='';try{nt=performance.getEntriesByType('navigation')[0].type}catch(e){}
+  log('App iniciada ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
