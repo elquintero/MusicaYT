@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "Música YT",
+  "short_name": "Música YT",
+  "description": "Listas de reproducción de YouTube con ruido blanco y temporizador de reposo",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#2b6a82",
+  "theme_color": "#2b6a82",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
