@@ -115,6 +115,9 @@ textarea{width:100%;min-height:110px;font:13px/1.45 ui-monospace,Consolas,monosp
 .ev{display:grid;grid-template-columns:1fr auto auto auto;gap:6px;align-items:center}
 pre#log{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,Consolas,monospace;margin:10px 0 0;max-height:55vh;overflow:auto}
 ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
+.pick{flex-wrap:wrap}
+#dark{position:fixed;inset:0;z-index:999;background:#000;display:grid;place-items:center;padding:24px;text-align:center;color:#666;font-size:15px;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#dark span{transition:opacity .6s}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -143,6 +146,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <select id="pls" aria-label="Lista de reproducción"></select>
     <button id="shuf" class="chip" aria-pressed="false">Aleatorio</button>
     <button id="rep" class="chip" aria-pressed="true">Repetir</button>
+    <button id="darkb" class="chip">Pantalla negra</button>
   </div>
 
   <div class="panel">
@@ -182,7 +186,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <div class="row" id="exp"><div class="tx"><b>Exportar listas</b><small>Descarga un archivo JSON</small></div></div>
     <div class="row" id="impb"><div class="tx"><b>Importar listas</b><small>Archivo JSON o texto con enlaces</small></div></div>
     <input id="imp" type="file" accept=".json,.txt" hidden>
-    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 2. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
+    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 3. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
   </div>
 </div>
 
@@ -228,6 +232,8 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     </div>
   </div>
 </div>
+
+<div id="dark" hidden><span id="darkt">Pantalla negra: sigue sonando.<br>Toca dos veces para salir.</span></div>
 
 <script>
 const $=s=>document.querySelector(s);
@@ -454,7 +460,7 @@ function next(){
   if(D.shuffle&&l.items.length>1){let j;do{j=Math.floor(Math.random()*l.items.length)}while(j===D.cur);return play(j)}
   if(D.cur+1>=l.items.length){
     if(D.repeat)return play(0);
-    msg('Fin de la lista.');wantPlay=false;kaStop();return;
+    msg('Fin de la lista.');wantPlay=false;kaStop();wlRelease();return;
   }
   play(D.cur+1);
 }
@@ -569,7 +575,7 @@ function sleepUi(){
   const r=Math.max(0,sleepEnd-Date.now()),m=Math.floor(r/60000),sec=Math.floor(r%60000/1000);
   s.textContent='Se apagará en '+m+':'+String(sec).padStart(2,'0');
 }
-function sleepFire(why){
+function sleepFire(why){wlRelease();
   wantPlay=false;if(ready)player.pauseVideo();kaStop();
   sleepClear();sleepMode='off';$('#slp').value='off';sleepUi();msg(why);log('Temporizador: '+why);
   if($('#nzslp').checked)nzStop();
@@ -795,6 +801,27 @@ $('#logcp').onclick=()=>{
   navigator.clipboard.writeText(LOG.join('\n')).then(()=>$('#logst').textContent='Copiado.',()=>$('#logst').textContent='No se pudo copiar.');
 };
 
+/* ---------- Pantalla negra + pantalla siempre encendida ---------- */
+// YouTube solo reproduce con la página visible. Con la pantalla negra y el bloqueo de apagado (Wake Lock) la página sigue «visible» para YouTube.
+let wl=null,darkOn=false,darkTap=0,darkTm=null;
+async function wlAcquire(){
+  if(!('wakeLock' in navigator)){log('Wake Lock no disponible en este navegador');return}
+  try{
+    wl=await navigator.wakeLock.request('screen');log('Wake Lock: activo');
+    wl.addEventListener('release',()=>{log('Wake Lock: liberado');wl=null});
+  }catch(e){log('Wake Lock rechazado: '+((e&&e.name)||e))}
+}
+function wlRelease(){if(wl){try{wl.release()}catch(e){}wl=null}}
+function darkHint(ms){const t=$('#darkt');t.style.opacity=1;clearTimeout(darkTm);darkTm=setTimeout(()=>{t.style.opacity=0},ms)}
+function darkSet(on){
+  darkOn=on;$('#dark').hidden=!on;
+  if(on){wlAcquire();darkHint(4000);log('Pantalla negra: activada')}
+  else{wlRelease();log('Pantalla negra: desactivada')}
+}
+$('#darkb').onclick=()=>darkSet(true);
+$('#dark').onclick=()=>{const n=Date.now();if(n-darkTap<700)darkSet(false);else{darkTap=n;darkHint(2500)}};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&darkOn&&!wl)wlAcquire()});
+
 /* ---------- Teclado ---------- */
 document.addEventListener('keydown',e=>{
   if(/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)||e.ctrlKey||e.metaKey||e.altKey||scr!=='main')return;
@@ -808,7 +835,7 @@ render0();
 function render0(){renderMain();show('main');setHH();fillMissing()}
 addEventListener('resize',setHH);
 (function(){let nt='';try{nt=performance.getEntriesByType('navigation')[0].type}catch(e){}
-  log('App iniciada v2 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
+  log('App iniciada v3 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
