@@ -116,6 +116,8 @@ textarea{width:100%;min-height:110px;font:13px/1.45 ui-monospace,Consolas,monosp
 pre#log{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,Consolas,monospace;margin:10px 0 0;max-height:55vh;overflow:auto}
 ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 .pick{flex-wrap:wrap}
+.pick select{flex:1 1 100%}
+.pick .chip{flex:1 1 0;white-space:nowrap;padding-left:8px;padding-right:8px}
 #dark{position:fixed;inset:0;z-index:999;background:#000;display:grid;place-items:center;padding:24px;text-align:center;color:#666;font-size:15px;touch-action:manipulation;-webkit-user-select:none;user-select:none}
 #dark span{transition:opacity .6s}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -186,7 +188,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <div class="row" id="exp"><div class="tx"><b>Exportar listas</b><small>Descarga un archivo JSON</small></div></div>
     <div class="row" id="impb"><div class="tx"><b>Importar listas</b><small>Archivo JSON o texto con enlaces</small></div></div>
     <input id="imp" type="file" accept=".json,.txt" hidden>
-    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 3. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
+    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 4. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
   </div>
 </div>
 
@@ -803,7 +805,7 @@ $('#logcp').onclick=()=>{
 
 /* ---------- Pantalla negra + pantalla siempre encendida ---------- */
 // YouTube solo reproduce con la página visible. Con la pantalla negra y el bloqueo de apagado (Wake Lock) la página sigue «visible» para YouTube.
-let wl=null,darkOn=false,darkTap=0,darkTm=null;
+let wl=null,darkOn=false,darkTap=0,darkTm=null,tcOld='';
 async function wlAcquire(){
   if(!('wakeLock' in navigator)){log('Wake Lock no disponible en este navegador');return}
   try{
@@ -815,9 +817,23 @@ function wlRelease(){if(wl){try{wl.release()}catch(e){}wl=null}}
 function darkHint(ms){const t=$('#darkt');t.style.opacity=1;clearTimeout(darkTm);darkTm=setTimeout(()=>{t.style.opacity=0},ms)}
 function darkSet(on){
   darkOn=on;$('#dark').hidden=!on;
-  if(on){wlAcquire();darkHint(4000);log('Pantalla negra: activada')}
-  else{wlRelease();log('Pantalla negra: desactivada')}
+  const tc=document.querySelector('meta[name=theme-color]'),de=document.documentElement;
+  if(on){
+    if(tc){tcOld=tc.content;tc.content='#000000'} // barra de estado y de navegación en negro
+    wlAcquire();darkHint(4000);log('Pantalla negra: activada');
+    try{ // pantalla completa: debe pedirse dentro del toque del usuario
+      const r=de.requestFullscreen?de.requestFullscreen({navigationUI:'hide'}):null;
+      if(r&&r.then)r.then(()=>log('Pantalla completa: activa')).catch(e=>log('Pantalla completa rechazada: '+((e&&e.name)||e)));
+      else log('Pantalla completa no disponible en este navegador');
+    }catch(e){log('Pantalla completa falló: '+((e&&e.name)||e))}
+  }else{
+    if(tc&&tcOld)tc.content=tcOld;
+    wlRelease();log('Pantalla negra: desactivada');
+    if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});
+  }
 }
+// Si se sale de la pantalla completa (gesto atrás, etc.), se sale también de la pantalla negra
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&darkOn)darkSet(false)});
 $('#darkb').onclick=()=>darkSet(true);
 $('#dark').onclick=()=>{const n=Date.now();if(n-darkTap<700)darkSet(false);else{darkTap=n;darkHint(2500)}};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&darkOn&&!wl)wlAcquire()});
@@ -835,7 +851,7 @@ render0();
 function render0(){renderMain();show('main');setHH();fillMissing()}
 addEventListener('resize',setHH);
 (function(){let nt='';try{nt=performance.getEntriesByType('navigation')[0].type}catch(e){}
-  log('App iniciada v3 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
+  log('App iniciada v4 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
