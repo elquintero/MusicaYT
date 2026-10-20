@@ -127,6 +127,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 <header class="top" id="hd">
   <button class="ib" id="back" aria-label="Atrás" hidden><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
   <h1 id="ttl">Música YT</h1>
+  <button class="ib" id="fs" aria-label="Pantalla completa" title="Pantalla completa"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
   <button class="ib" id="gear" aria-label="Ajustes"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
 </header>
 
@@ -188,7 +189,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <div class="row" id="exp"><div class="tx"><b>Exportar listas</b><small>Descarga un archivo JSON</small></div></div>
     <div class="row" id="impb"><div class="tx"><b>Importar listas</b><small>Archivo JSON o texto con enlaces</small></div></div>
     <input id="imp" type="file" accept=".json,.txt" hidden>
-    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 5. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
+    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 6. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
   </div>
 </div>
 
@@ -331,7 +332,7 @@ function show(n){
     else v.hidden=!me;
   });
   $('#ttl').textContent=n==='edit'&&D.lists[editId]?D.lists[editId].name:TT[n];
-  $('#back').hidden=n==='main';$('#gear').hidden=n!=='main';
+  $('#back').hidden=n==='main';$('#gear').hidden=n!=='main';$('#fs').hidden=n!=='main';
   if(n==='set')renderSet();else if(n==='lists')renderLists();else if(n==='edit')renderEdit();else if(n==='diag')renderDiag();
   window.scrollTo(0,0);
 }
@@ -821,7 +822,15 @@ $('#logcp').onclick=()=>{
 
 /* ---------- Pantalla negra + pantalla siempre encendida ---------- */
 // YouTube solo reproduce con la página visible. Con la pantalla negra y el bloqueo de apagado (Wake Lock) la página sigue «visible» para YouTube.
-let wl=null,darkOn=false,darkTap=0,darkTm=null,tcOld='';
+let wl=null,darkOn=false,darkTap=0,darkTm=null,tcOld='',fsBefore=false;
+$('#fs').onclick=()=>{
+  const de=document.documentElement;
+  try{
+    if(document.fullscreenElement){document.exitFullscreen();return}
+    if(!de.requestFullscreen){msg('Este navegador no permite pantalla completa.',true);return}
+    de.requestFullscreen({navigationUI:'hide'}).catch(e=>msg('No se pudo activar la pantalla completa.',true));
+  }catch(e){msg('No se pudo activar la pantalla completa.',true)}
+};
 async function wlAcquire(){
   if(!('wakeLock' in navigator)){log('Wake Lock no disponible en este navegador');return}
   try{
@@ -835,6 +844,7 @@ function darkSet(on){
   darkOn=on;$('#dark').hidden=!on;
   const tc=document.querySelector('meta[name=theme-color]'),de=document.documentElement;
   if(on){
+    fsBefore=!!document.fullscreenElement;
     if(tc){tcOld=tc.content;tc.content='#000000'} // barra de estado y de navegación en negro
     wlAcquire();darkHint(4000);log('Pantalla negra: activada');
     try{ // pantalla completa: debe pedirse dentro del toque del usuario
@@ -845,7 +855,7 @@ function darkSet(on){
   }else{
     if(tc&&tcOld)tc.content=tcOld;
     wlRelease();log('Pantalla negra: desactivada');
-    if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});
+    if(!fsBefore&&document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});
   }
 }
 // Si se sale de la pantalla completa (gesto atrás, etc.), se sale también de la pantalla negra
@@ -867,7 +877,7 @@ render0();
 function render0(){renderMain();show('main');setHH();fillMissing()}
 addEventListener('resize',setHH);
 (function(){let nt='';try{nt=performance.getEntriesByType('navigation')[0].type}catch(e){}
-  log('App iniciada v5 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
+  log('App iniciada v6 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
