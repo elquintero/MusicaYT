@@ -189,7 +189,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <div class="row" id="exp"><div class="tx"><b>Exportar listas</b><small>Descarga un archivo JSON</small></div></div>
     <div class="row" id="impb"><div class="tx"><b>Importar listas</b><small>Archivo JSON o texto con enlaces</small></div></div>
     <input id="imp" type="file" accept=".json,.txt" hidden>
-    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 6. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
+    <div class="blk"><p class="hint" id="setmsg" role="status" style="margin:0">Versión 7. La app debe abrirse por https (o localhost): el reproductor de YouTube no funciona desde un archivo local.</p></div>
   </div>
 </div>
 
@@ -197,6 +197,8 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 <div class="view" id="v-lists" hidden>
   <div class="sc">
     <div class="row" id="lsnew"><div class="tx"><b>+ Nueva lista</b><small>Crear una lista vacía</small></div></div>
+    <div class="row" id="lsimp"><div class="tx"><b>Importar lista de YouTube</b><small>Crea una lista propia a partir de un enlace de lista</small></div></div>
+    <p class="note" id="lsmsg" role="status"></p>
     <div id="lsrows"></div>
   </div>
 </div>
@@ -212,7 +214,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     </div></div>
     <div class="sec">Añadir vídeos</div>
     <div class="blk">
-      <p class="hint">Un enlace de YouTube por línea. Opcionalmente: <code>Título | enlace</code>. Valen youtu.be, watch?v=, shorts y música.</p>
+      <p class="hint">Un enlace de YouTube por línea. Opcionalmente: <code>Título | enlace</code>. Valen youtu.be, watch?v=, shorts y música. Si pegas un enlace de lista (playlist?list=…), se añaden todos sus vídeos.</p>
       <textarea id="edta" placeholder="https://www.youtube.com/watch?v=...&#10;Nocturno Op. 9 nº 2 | https://youtu.be/..."></textarea>
       <div class="btns"><button class="main" id="edadd">Añadir a la lista</button><span class="st" id="edmsg" role="status"></span></div>
     </div>
@@ -278,7 +280,7 @@ function ytId(s){
   return m?m[1]:null;
 }
 function parseLinks(text){
-  const out=[];let skipped=0;
+  const out=[],pls=[];let skipped=0;
   text.split(/\r?\n/).forEach(l=>{
     l=l.trim();if(!l)return;
     let id=null;const rest=[];
@@ -287,9 +289,10 @@ function parseLinks(text){
       if(i)id=i;else rest.push(p);
     });
     if(!id&&/^[\w-]{11}$/.test(l))id=l;
-    if(id)out.push({id,title:rest.join(' · ')});else skipped++;
+    if(id)out.push({id,title:rest.join(' · ')});
+    else{const pm=l.match(/[?&]list=([\w-]+)/);if(pm){if(!pls.includes(pm[1]))pls.push(pm[1])}else skipped++}
   });
-  return{out,skipped};
+  return{out,skipped,pls};
 }
 async function meta(id){
   const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);
@@ -297,6 +300,58 @@ async function meta(id){
     const r=await fetch('https://www.youtube.com/oembed?format=json&url='+encodeURIComponent('https://www.youtube.com/watch?v='+id),{signal:c.signal});
     return r.ok?await r.json():null;
   }catch(e){return null}finally{clearTimeout(t)}
+}
+async function metaUrl(u){
+  const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);
+  try{
+    const r=await fetch('https://www.youtube.com/oembed?format=json&url='+encodeURIComponent(u),{signal:c.signal});
+    return r.ok?await r.json():null;
+  }catch(e){return null}finally{clearTimeout(t)}
+}
+// Lee los vídeos de una lista de YouTube con un reproductor temporal fuera de pantalla (getPlaylist de la API oficial; no hace falta clave)
+function ytPlaylistIds(pid,timeout=20000){
+  return new Promise((res,rej)=>{
+    if(!window.YT||!YT.Player){rej(new Error('YouTube aún no ha cargado. Inténtalo en unos segundos.'));return}
+    const host=document.createElement('div');
+    host.style.cssText='position:fixed;left:-9999px;top:0;width:200px;height:120px;pointer-events:none';
+    const inner=document.createElement('div');host.append(inner);document.body.append(host);
+    let done=false,p=null,iv=null,to=null,got=false;
+    const fin=(err,ids)=>{
+      if(done)return;done=true;clearInterval(iv);clearTimeout(to);
+      try{p&&p.destroy()}catch(e){}host.remove();
+      err?rej(err):res(ids);
+    };
+    const o={playsinline:1};if(/^https?:$/.test(location.protocol))o.origin=location.origin;
+    p=new YT.Player(inner,{width:200,height:120,playerVars:o,events:{
+      onReady:()=>{
+        try{p.cuePlaylist({listType:'playlist',list:pid})}catch(e){fin(e);return}
+        iv=setInterval(()=>{
+          try{const a=p.getPlaylist();
+            if(a&&a.length&&!got){got=true;setTimeout(()=>{try{fin(null,p.getPlaylist()||a)}catch(e){fin(null,a)}},900)} // pequeña espera por si la lista llega por tramos
+          }catch(e){}
+        },500);
+      },
+      onError:e=>fin(new Error('YouTube no permite leer esta lista (código '+e.data+').'))
+    }});
+    to=setTimeout(()=>fin(new Error('La lista no respondió: ¿es privada, está vacía o es un «Mix»?')),timeout);
+  });
+}
+// lid=null → crea una lista nueva con el nombre de la lista de YouTube
+async function importPlaylist(pid,lid,say){
+  if(/^RD/.test(pid)){say('Los «Mix» de YouTube cambian solos y no se pueden importar.',true);return null}
+  say('Leyendo la lista de YouTube…');
+  let ids;
+  try{ids=await ytPlaylistIds(pid)}catch(e){say(e.message,true);log('Importar lista '+pid+': '+e.message);return null}
+  ids=(ids||[]).filter(x=>/^[\w-]{11}$/.test(x));
+  if(!ids.length){say('La lista no tiene vídeos accesibles.',true);return null}
+  let l=lid?D.lists[lid]:null;
+  if(!l){const m=await metaUrl('https://www.youtube.com/playlist?list='+pid);l=newList((m&&m.title)||'Lista importada')}
+  let a=0,d=0;
+  ids.forEach(id=>{if(l.items.some(x=>x.id===id)){d++;return}l.items.push({id,title:'',author:''});a++});
+  save();renderMain();fillMissing();
+  log('Lista importada: '+a+' vídeos en «'+l.name+'»');
+  say(a+' vídeos añadidos a «'+l.name+'»'+(d?' ('+d+' repetidos)':'')+'.');
+  return l;
 }
 const tried=new Set();
 async function fillMissing(){
@@ -310,15 +365,15 @@ async function fillMissing(){
   }
 }
 function addVideos(lid,text){
-  const l=D.lists[lid];if(!l)return{a:0,d:0,s:0};
-  const {out,skipped}=parseLinks(text);let a=0,d=0;
+  const l=D.lists[lid];if(!l)return{a:0,d:0,s:0,pls:[]};
+  const {out,skipped,pls}=parseLinks(text);let a=0,d=0;
   out.forEach(o=>{
     if(l.items.some(x=>x.id===o.id)){d++;return}
     l.items.push({id:o.id,title:o.title,author:''});a++;
   });
   save();renderMain();
   if(a)fillMissing();
-  return{a,d,s:skipped};
+  return{a,d,s:skipped,pls};
 }
 
 /* ---------- Navegación ---------- */
@@ -734,6 +789,14 @@ function newList(name){
   const id=uid();D.lists[id]={id,name,items:[]};D.order.push(id);
   if(!D.active)D.active=id;return D.lists[id];
 }
+const setLs=(t,err)=>{const m=$('#lsmsg');m.textContent=t||'';m.className='note'+(err?' err':'')};
+$('#lsimp').onclick=async()=>{
+  const u=prompt('Pega el enlace de la lista de YouTube (…playlist?list=…)');if(!u||!u.trim())return;
+  const m=u.match(/[?&]list=([\w-]+)/);
+  if(!m){setLs('No encuentro «list=» en ese enlace.',true);return}
+  const l=await importPlaylist(m[1],null,setLs);
+  if(l)renderLists();
+};
 function renderLists(){
   const box=$('#lsrows');box.textContent='';
   D.order.forEach(id=>{
@@ -805,12 +868,16 @@ $('#eddel').onclick=()=>{
   if(D.active===l.id)D.active=D.order[0]||null;
   save();renderMain();history.back();
 };
-$('#edadd').onclick=()=>{
-  const ta=$('#edta'),r=addVideos(editId,ta.value);
+$('#edadd').onclick=async()=>{
+  const ta=$('#edta'),lid=editId,r=addVideos(lid,ta.value);
   const e=$('#edmsg');
-  if(!r.a&&!r.d&&!r.s)e.textContent='Pega algún enlace.';
+  if(!r.a&&!r.d&&!r.s&&!r.pls.length)e.textContent='Pega algún enlace.';
   else{e.textContent=r.a+' añadidos'+(r.d?', '+r.d+' repetidos':'')+(r.s?', '+r.s+' líneas sin enlace válido':'')+'.';ta.value=''}
   e.className='st'+(r.s?' err':'');renderEdit();
+  for(const pid of r.pls){
+    await importPlaylist(pid,lid,(t,err)=>{e.textContent=t;e.className='st'+(err?' err':'')});
+    if(scr==='edit'&&editId===lid)renderEdit();
+  }
 };
 
 /* ---------- Diagnóstico ---------- */
@@ -877,7 +944,7 @@ render0();
 function render0(){renderMain();show('main');setHH();fillMissing()}
 addEventListener('resize',setHH);
 (function(){let nt='';try{nt=performance.getEntriesByType('navigation')[0].type}catch(e){}
-  log('App iniciada v6 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
+  log('App iniciada v7 ['+(nt||'?')+']'+(IOS?' (iOS)':'')+(matchMedia('(display-mode: standalone)').matches?' (instalada)':' (navegador)'))})();
 
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
   addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
