@@ -72,7 +72,7 @@ textarea{width:100%;min-height:110px;font:13px/1.45 ui-monospace,Consolas,monosp
 .tb svg{width:30px;height:30px;fill:currentColor}
 #play svg{width:36px;height:36px}
 .foot{display:flex;justify-content:center;margin:18px 0 6px}
-.modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}
 .md{display:grid;place-items:center;min-height:48px;padding:0;border-radius:999px}
 .md svg{width:24px;height:24px;fill:currentColor}
 .md[aria-pressed=true]{color:var(--accT)}
@@ -178,9 +178,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     </div>
   </div>
 
-  <div class="pick">
-    <select id="pls" aria-label="Lista de reproducción"></select>
-  </div>
+
   <div class="modes">
     <button id="shuf" class="md" aria-pressed="false" aria-label="Aleatorio" title="Aleatorio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
     <button id="rep" class="md" aria-pressed="true" aria-label="Repetir lista" title="Repetir lista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
@@ -207,6 +205,10 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <p class="note" id="volnote"></p>
     <p class="note" id="nzmsg" role="status"></p>
   </details>
+
+  <div class="pick">
+    <select id="pls" aria-label="Lista de reproducción"></select>
+  </div>
 
   <div class="panel">
     <div class="bar"><b id="cnt">0 vídeos</b><button id="all" class="main chip">Reproducir lista</button></div>
@@ -298,7 +300,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 
 <script>
 const $=s=>document.querySelector(s);
-const VER='18';
+const VER='20';
 const KEY='ytl-datos-v1',KP='ytl-pos-v1',KS='ytl-ajustes-v1',KL='ytl-log-v1';
 let D={lists:{},order:[],active:null,pl:null,cur:-1,shuffle:false,repeat:true,loop1:false};
 let S={ka:true,rs:true,ch:100,nz:50,type:'white',slp:false,log:true,pn:false,priv:true};
@@ -806,11 +808,25 @@ function nzBuild(type){
   for(let i=0;i<N;i++)pcm[i]=Math.max(-1,Math.min(1,o[i]*g))*32767;
   return wavBlob(pcm,sr);
 }
-function nzLoad(){
+async function nzLoad(){
   if(nzType===S.type&&nzUrl)return;
+  let blob;
+  if(S.type==='abs'){
+    // «Blanco ABS» es un archivo propio (blanco-abs.wav, junto a index.html). Se descarga entero y se reproduce desde memoria:
+    // así no depende de peticiones por rangos ni del tipo MIME que sirva el hosting, y si falta se sabe por qué.
+    try{
+      const r=await fetch('blanco-abs.wav');
+      if(!r.ok)throw new Error(r.status===404?'no está en el hosting (error 404)':'error '+r.status);
+      blob=new Blob([await r.arrayBuffer()],{type:'audio/wav'});
+    }catch(e){
+      const why=(e&&e.message)||String(e);
+      nzMsg('No se pudo cargar blanco-abs.wav: '+why+'. Debe estar en la misma carpeta que index.html.',true);
+      log('Blanco ABS: '+why);
+      throw e;
+    }
+  }else blob=nzBuild(S.type);
   if(nzUrl&&nzUrl.startsWith('blob:'))URL.revokeObjectURL(nzUrl);
-  // «Blanco ABS» es un archivo propio (blanco-abs.wav, junto a index.html); los demás se generan en el móvil
-  nzUrl=S.type==='abs'?'blanco-abs.wav':URL.createObjectURL(nzBuild(S.type));nzType=S.type;NZ.src=nzUrl;NZ2.src=nzUrl;
+  nzUrl=URL.createObjectURL(blob);nzType=S.type;NZ.src=nzUrl;NZ2.src=nzUrl;
 }
 function nzApplyVol(){NZE.forEach((e,i)=>{e.volume=Math.max(0,Math.min(1,S.nz/100*nzG[i]))})}
 function nzSwapDone(){const a=NZE[nzAct];a.pause();try{a.currentTime=0}catch(e){}nzAct=1-nzAct;nzG[nzAct]=1;nzG[1-nzAct]=0;nzFade=0;nzApplyVol()}
@@ -837,7 +853,7 @@ function nzPlay(){
   nzFade=0;nzAct=0;nzG=[1,0];NZ.loop=!canVol;NZ2.loop=false;
   try{NZ2.pause();NZ2.currentTime=0}catch(e){}
   nzApplyVol();
-  NZ.play().catch(()=>nzMsg('No se pudo iniciar el ruido. Vuelve a pulsar «Activar».',true));
+  NZ.play().catch(e=>{nzMsg('No se pudo iniciar el ruido ('+((e&&e.name)||'error')+'). Vuelve a pulsar «Activar».',true);log('Ruido: play() falló: '+((e&&e.name)||e))});
   clearTimeout(nzT);if(canVol)nzT=setTimeout(nzLoop,1000);
 }
 function nzUi(){const b=$('#nzb');b.setAttribute('aria-pressed',nzOn);b.textContent=nzOn?'Desactivar':'Activar';updSum()}
@@ -848,13 +864,13 @@ function updSum(){
   else if(sleepMode==='end')p.push('Para al acabar la lista');
   const e=$('#nzsum');if(e)e.textContent=p.join(' · ');
 }
-function nzStart(){nzOn=true;nzUi();nzMsg('');nzLoad();nzPlay()}
+function nzStart(){nzOn=true;nzUi();nzMsg('');nzLoad().then(()=>{if(nzOn)nzPlay()},()=>{nzOn=false;nzUi()})}
 function nzStop(){nzOn=false;nzUi();clearTimeout(nzT);nzPauseAll()}
 $('#nzb').onclick=()=>nzOn?nzStop():nzStart();
 $('#vch').oninput=e=>{S.ch=+e.target.value;$('#vchv').textContent=S.ch;applyVol();saveS()};
 $('#vnz').oninput=e=>{S.nz=+e.target.value;$('#vnzv').textContent=S.nz;nzApplyVol();saveS()};
 $('#nzslp').onchange=e=>{S.slp=e.target.checked;saveS()};
-$('#nzt').onchange=e=>{S.type=e.target.value;saveS();if(nzOn){nzLoad();nzPlay()}};
+$('#nzt').onchange=e=>{S.type=e.target.value;saveS();if(nzOn)nzLoad().then(()=>{if(nzOn)nzPlay()},()=>{nzOn=false;nzPauseAll();nzUi()})};
 function showVol(){
   $('#vch').value=S.ch;$('#vchv').textContent=S.ch;$('#vnz').value=S.nz;$('#vnzv').textContent=S.nz;
   $('#nzslp').checked=!!S.slp;$('#nzt').value=S.type;
