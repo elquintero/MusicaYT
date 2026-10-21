@@ -72,12 +72,10 @@ textarea{width:100%;min-height:110px;font:13px/1.45 ui-monospace,Consolas,monosp
 .tb svg{width:30px;height:30px;fill:currentColor}
 #play svg{width:36px;height:36px}
 .foot{display:flex;justify-content:center;margin:18px 0 6px}
-#fsx{display:none}
-.modes{display:grid;grid-template-columns:1fr 1fr 1fr 58px;gap:8px;margin-top:10px}
+.modes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
 .md{display:grid;place-items:center;min-height:48px;padding:0;border-radius:999px}
 .md svg{width:24px;height:24px;fill:currentColor}
 .md[aria-pressed=true]{color:var(--accT)}
-.md.sq{border-radius:14px;background:var(--acc);border-color:var(--acc);color:#fff}
 /* Pantalla completa + móvil en horizontal: solo el vídeo y una barra fina de controles */
 @media (orientation:landscape){
   :root.on-main:fullscreen .top,
@@ -86,9 +84,7 @@ textarea{width:100%;min-height:110px;font:13px/1.45 ui-monospace,Consolas,monosp
   :root.on-main:fullscreen .stage{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;padding:0;background:#000}
   :root.on-main:fullscreen .vw{flex:1;min-height:0;width:100%;max-width:none;aspect-ratio:auto;margin:0;border-radius:0}
   :root.on-main:fullscreen #now,:root.on-main:fullscreen #sub,:root.on-main:fullscreen #msg{display:none}
-  :root.on-main:fullscreen .ctl{grid-template-columns:1fr 1.4fr 1fr 1fr;margin:0;padding:4px 8px;background:#000;gap:6px}
-  :root.on-main:fullscreen .tb{min-height:44px}
-  :root.on-main:fullscreen #fsx{display:grid}
+  :root.on-main:fullscreen .ctl{display:none}
 }
 
 /* Paneles */
@@ -179,7 +175,6 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
       <button id="prev" class="tb" aria-label="Anterior" title="Anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
       <button id="play" class="tb main" data-m="play" aria-label="Reproducir" title="Reproducir"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
       <button id="next" class="tb" aria-label="Siguiente" title="Siguiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
-      <button id="fsx" class="tb" aria-label="Salir de pantalla completa" title="Salir de pantalla completa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg></button>
     </div>
   </div>
 
@@ -190,7 +185,6 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
     <button id="shuf" class="md" aria-pressed="false" aria-label="Aleatorio" title="Aleatorio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg></button>
     <button id="rep" class="md" aria-pressed="true" aria-label="Repetir lista" title="Repetir lista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg></button>
     <button id="one" class="md" aria-pressed="false" aria-label="Repetir este vídeo" title="Repetir este vídeo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.6 6.62c-1.44 0-2.8.56-3.77 1.53L12 10.66 10.48 12h.01L7.8 14.39c-.64.64-1.49.99-2.4.99-1.87 0-3.39-1.51-3.39-3.38S3.53 8.62 5.4 8.62c.91 0 1.76.35 2.44 1.03l1.13 1 1.51-1.34L9.22 8.2C8.2 7.18 6.84 6.62 5.4 6.62 2.42 6.62 0 9.04 0 12s2.42 5.38 5.4 5.38c1.44 0 2.8-.56 3.77-1.53l2.83-2.5.01.01L13.52 12h-.01l2.69-2.39c.64-.64 1.49-.99 2.4-.99 1.87 0 3.39 1.51 3.39 3.38s-1.52 3.38-3.39 3.38c-.9 0-1.76-.35-2.44-1.03l-1.14-1.01-1.51 1.34 1.27 1.12c1.02 1.01 2.37 1.57 3.82 1.57 2.98 0 5.4-2.41 5.4-5.38s-2.42-5.37-5.4-5.37z"/></svg></button>
-    <button id="fs2" class="md sq" aria-label="Pantalla completa" title="Pantalla completa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
   </div>
 
   <details class="panel" id="nzd">
@@ -304,7 +298,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 
 <script>
 const $=s=>document.querySelector(s);
-const VER='17';
+const VER='18';
 const KEY='ytl-datos-v1',KP='ytl-pos-v1',KS='ytl-ajustes-v1',KL='ytl-log-v1';
 let D={lists:{},order:[],active:null,pl:null,cur:-1,shuffle:false,repeat:true,loop1:false};
 let S={ka:true,rs:true,ch:100,nz:50,type:'white',slp:false,log:true,pn:false,priv:true};
@@ -506,7 +500,6 @@ $('#pls').onchange=e=>{D.active=e.target.value;save();renderMain()};
 $('#shuf').onclick=()=>{D.shuffle=!D.shuffle;save();renderMain()};
 $('#rep').onclick=()=>{D.repeat=!D.repeat;save();renderMain()};
 $('#one').onclick=()=>{D.loop1=!D.loop1;save();renderMain()};
-$('#fs2').onclick=()=>$('#fs').click();
 $('#all').onclick=()=>{const l=D.lists[D.active];if(!l||!l.items.length)return msg('No hay vídeos que reproducir.',true);playIn(l.id,0)};
 
 /* ---------- Reproductor de YouTube ---------- */
@@ -1074,7 +1067,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&darkOn&&!
 /* ---------- Giro de pantalla en pantalla completa ---------- */
 function updRot(){const r=$('#rot');if(r)r.hidden=!(document.fullscreenElement&&scr==='main')}
 document.addEventListener('fullscreenchange',()=>{updRot();log('Pantalla completa: '+(document.fullscreenElement?'sí':'no'))});
-$('#fsx').onclick=()=>{try{document.exitFullscreen()}catch(e){}};
 // Fija la orientación (solo se permite en pantalla completa) o la alterna si ya está fijada
 $('#rot').onclick=async()=>{
   try{
