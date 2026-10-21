@@ -29,7 +29,8 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%;overflow-anchor:none}
+html{-webkit-text-size-adjust:100%;overflow-anchor:none;scrollbar-width:none}
+html::-webkit-scrollbar{display:none}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);-webkit-tap-highlight-color:transparent}
 
 /* Cabecera */
@@ -278,7 +279,7 @@ ol.steps{margin:0;padding-left:20px;color:var(--mut);font-size:13px}
 
 <script>
 const $=s=>document.querySelector(s);
-const VER='11';
+const VER='12';
 const KEY='ytl-datos-v1',KP='ytl-pos-v1',KS='ytl-ajustes-v1',KL='ytl-log-v1';
 let D={lists:{},order:[],active:null,pl:null,cur:-1,shuffle:false,repeat:true};
 let S={ka:true,rs:true,ch:100,nz:50,type:'white',slp:false,log:true,pn:false,priv:true};
